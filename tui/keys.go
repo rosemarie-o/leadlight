@@ -325,6 +325,17 @@ func (m *Model) handleTableKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.invalidateVisibleItems()
 		m.commitFilter()
 
+	case "*":
+		m.toggleStar()
+
+	case "!":
+		m.starredOnly = !m.starredOnly
+		m.selectedRow = 0
+		m.scrollOffset = 0
+		m.invalidateVisibleItems()
+		m.updateSelectedID()
+		m.ensureSelectedVisible()
+
 	case "a":
 		m.showAll = !m.showAll
 		m.reloadData()

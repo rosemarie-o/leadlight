@@ -286,7 +286,7 @@ func (s *Syncer) Run(ctx context.Context) {
 	s.incrementalSync(ctx)
 
 	var wg gosync.WaitGroup
-	wg.Add(9)
+	wg.Add(10)
 	go s.runUserRequests(ctx, &wg)
 	go s.runSyncLoop(ctx, &wg)
 	go s.runBgLoop(ctx, &wg, activeInterval, s.fetchNextComments)
@@ -295,6 +295,7 @@ func (s *Syncer) Run(ctx context.Context) {
 	go s.runBgLoop(ctx, &wg, activeInterval, s.fetchNextCoverDetail)
 	go s.runBgLoop(ctx, &wg, activeInterval, s.fetchNextChecks)
 	go s.runBgLoop(ctx, &wg, activeInterval, s.fetchNextSeriesDetail)
+	go s.runBgLoop(ctx, &wg, activeInterval, s.starSweepStep)
 	go s.runArchiveLoop(ctx, &wg)
 	wg.Wait()
 }

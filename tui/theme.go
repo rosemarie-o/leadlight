@@ -26,6 +26,9 @@ type theme struct {
 
 	AfrtFg string // non-zero values in C and A F R T columns
 
+	StarFg    string // starred patch marker
+	StarDimFg string // series marker: a patch inside it is starred
+
 	ChecksPassFg, ChecksFailFg string
 	ChecksWarnFg, ChecksZeroFg string
 	ChecksPendingFg            string // mbox view only (truly pending checks)
@@ -92,6 +95,9 @@ var darkTheme = theme{
 	OptionNumFg:         "250", // light grey
 
 	AfrtFg: "147", // soft lavender
+
+	StarFg:    "220", // bright gold
+	StarDimFg: "136", // muted amber
 
 	ChecksPassFg:    "34",  // forest green
 	ChecksFailFg:    "196", // bright red
@@ -163,6 +169,9 @@ var lightTheme = theme{
 	OptionNumFg:         "240", // mid-grey
 
 	AfrtFg: "98", // medium lavender
+
+	StarFg:    "178", // deep gold
+	StarDimFg: "137", // soft tan
 
 	ChecksPassFg:    "28",  // dark green
 	ChecksFailFg:    "124", // dark red

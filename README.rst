@@ -26,6 +26,40 @@ Otherwise, use the ``leadlight.*`` namespace::
   # Required for API 1.2 instances (which lack comment events)
   git config leadlight.mailarchive https://lists.example.com/pipermail/dev/
 
+Starring patches
+~~~~~~~~~~~~~~~~
+
+Press ``*`` to star the selected patch, or the whole series when a
+series row is selected.  Starred patches are marked with a ``★`` in
+the first column, and ``!`` narrows the list to just them.  Stars are
+stored locally, per repository, and are not sent to Patchwork.
+
+Patches can also be starred automatically.  Each of these keys may be
+repeated, and a patch matching any value is starred::
+
+  # Star patches you are on the To or Cc line of.  Defaults to
+  # user.email, so this usually needs no configuration.
+  git config --add leadlight.star-email you@example.com
+
+  # Star patches whose subject contains a keyword
+  git config --add leadlight.star-keyword netdev
+
+  # Star patches from a particular submitter (name or email)
+  git config --add leadlight.star-submitter "Jane Doe"
+
+  # Turn automatic starring off entirely
+  git config leadlight.autostar false
+
+Matching is case-insensitive and on substrings.  Starring or
+unstarring a patch by hand always wins over the rules, so a star you
+remove stays removed.  Editing the rules re-derives the automatic
+stars on the next start, leaving the ones you set by hand alone.
+
+Because ``To`` and ``Cc`` are only known once a patch's details have
+been fetched, email stars on a fresh database appear gradually as the
+background sync works through the list.  Keyword and submitter rules
+apply as soon as a patch shows up.
+
 Examples
 ~~~~~~~~
 

@@ -132,6 +132,18 @@ CREATE TABLE IF NOT EXISTS tags (
     identity   TEXT NOT NULL,
     UNIQUE(patch_id, cover_id, source, type, identity)
 );
+-- Locally starred patches.  Unlike every other table here this is
+-- user state, not a Patchwork mirror: nothing upstream knows about
+-- it and no sync will recreate it.  A row with starred = 0 records
+-- an explicit "not starred" decision, which is what stops the auto
+-- star rules from re-applying a star the user just removed.
+CREATE TABLE IF NOT EXISTS patch_stars (
+    patch_id   INTEGER PRIMARY KEY,
+    starred    INTEGER NOT NULL DEFAULT 1,
+    source     TEXT NOT NULL DEFAULT 'manual',
+    rule       TEXT NOT NULL DEFAULT '',
+    created_at TEXT
+);
 CREATE INDEX IF NOT EXISTS idx_checks_patch_context ON checks(patch_id, context, id);
 CREATE INDEX IF NOT EXISTS idx_tags_patch ON tags(patch_id);
 CREATE INDEX IF NOT EXISTS idx_tags_cover ON tags(cover_id);
@@ -240,6 +252,11 @@ var alterStatements = []string{
 	`CREATE INDEX IF NOT EXISTS idx_covers_comments_unfetched ON covers (has_active_patch, id DESC, series_id) WHERE comments_fetched = 0`,
 	// Series: by has_active_patch flag.
 	`CREATE INDEX IF NOT EXISTS idx_series_detail_unfetched ON series (has_active_patch, id DESC) WHERE detail_fetched = 0`,
+	// Star rule bookkeeping: cleared again whenever a patch gains
+	// detail, since Cc only becomes visible once headers arrive.
+	`ALTER TABLE patches ADD COLUMN stars_evaluated INTEGER DEFAULT 0`,
+	`UPDATE patches SET stars_evaluated = 0 WHERE stars_evaluated IS NULL`,
+	`CREATE INDEX IF NOT EXISTS idx_patches_stars_uneval ON patches (id) WHERE stars_evaluated = 0`,
 }
 
 func recomputeAllActiveFlags(db *sql.DB) {

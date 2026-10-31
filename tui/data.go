@@ -329,6 +329,7 @@ func LoadFromDB(
 	allCommentNames := d.GetCommentSubmittersBatch(false, states)
 	allPatchCommentNames := d.GetPatchCommentSubmittersBatch(false, states)
 	coverFetchStatus := d.GetCoverFetchStatus(false, states)
+	allStars := d.GetStarsBatch(false, states)
 
 	rows := make([]RowData, 0, len(seriesList))
 	for _, s := range seriesList {
@@ -339,7 +340,8 @@ func LoadFromDB(
 		rows = append(rows, seriesToRow(
 			s, allPatches[s.ID], listPrefix, delegateNames,
 			allTags[s.ID], allComments[s.ID], allPatchComments,
-			allCommentNames[s.ID], allPatchCommentNames, cf))
+			allCommentNames[s.ID], allPatchCommentNames, cf,
+			allStars[s.ID]))
 	}
 	return rows, nil
 }
@@ -350,7 +352,7 @@ func seriesToRow(
 	tags []db.TagRow, commentCount int,
 	patchComments map[int]int,
 	commentNames []string, patchCommentNames map[int][]string,
-	coverFetched *bool,
+	coverFetched *bool, stars map[int]bool,
 ) RowData {
 	name := s.Name
 	if name == "" && len(patches) > 0 {
@@ -434,8 +436,13 @@ func seriesToRow(
 	row.SubRows = make([][]string, len(patches))
 	row.SubRowStyles = make([]RowStyle, len(patches))
 	row.SubRowFetched = make([]bool, len(patches))
+	row.SubRowStarred = make([]bool, len(patches))
 	allPatchesFetched := true
 	for i, p := range patches {
+		if stars[p.ID] {
+			row.SubRowStarred[i] = true
+			row.Starred = true
+		}
 		row.SubRows[i] = patchToSubRow(
 			p, listPrefix, elevatedSet, delegateNames, tags,
 			patchComments[p.ID], patchCommentNames[p.ID])

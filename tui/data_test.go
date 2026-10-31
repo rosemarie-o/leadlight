@@ -465,7 +465,7 @@ func TestSeriesToRow_ElevatesTags(t *testing.T) {
 	}
 	for _, tt := range tests {
 		row := seriesToRow(tt.series, tt.patches, tt.prefix,
-			nil, nil, 0, nil, nil, nil, nil)
+			nil, nil, 0, nil, nil, nil, nil, nil)
 		if row.Data[ColName] != tt.wantName {
 			t.Errorf("%s: Name = %q, want %q",
 				tt.name, row.Data[ColName], tt.wantName)
@@ -509,7 +509,7 @@ func TestSeriesToRow_SubRowStripsElevated(t *testing.T) {
 		{Name: "[dolor,v2,2/3] Lorem second", Date: d, State: "new"},
 		{Name: "[dolor,v2,3/3] Lorem third", Date: d, State: "new"},
 	}
-	row := seriesToRow(s, patches, "", nil, nil, 0, nil, nil, nil, nil)
+	row := seriesToRow(s, patches, "", nil, nil, 0, nil, nil, nil, nil, nil)
 
 	// Sub-rows should have "dolor" stripped (elevated to series)
 	for i, sub := range row.SubRows {
@@ -539,7 +539,7 @@ func TestSeriesToRow_FilterMatchesTags(t *testing.T) {
 		{Name: "[dolor,v2,2/3] Lorem second", Date: d, State: "new"},
 		{Name: "[dolor,v2,3/3] Lorem third", Date: d, State: "new"},
 	}
-	row := seriesToRow(s, patches, "", nil, nil, 0, nil, nil, nil, nil)
+	row := seriesToRow(s, patches, "", nil, nil, 0, nil, nil, nil, nil, nil)
 
 	// Filter should match against ColTags content
 	filter := strings.ToLower("dolor")
@@ -952,7 +952,7 @@ func TestSubRowStyles_PerPatch(t *testing.T) {
 	}
 	patchComments := map[int]int{100: 1}
 	row := seriesToRow(s, patches, "", nil, tags, 1,
-		patchComments, nil, nil, nil)
+		patchComments, nil, nil, nil, nil)
 	if len(row.SubRowStyles) != 2 {
 		t.Fatalf("SubRowStyles len = %d, want 2", len(row.SubRowStyles))
 	}
@@ -1034,7 +1034,7 @@ func TestSeriesToRow(t *testing.T) {
 			Identity: "Lorem <lorem@ex>"},
 	}
 
-	row := seriesToRow(s, patches, "", nil, tags, 1, nil, nil, nil, nil)
+	row := seriesToRow(s, patches, "", nil, tags, 1, nil, nil, nil, nil, nil)
 
 	if row.Data[ColID] != "50" {
 		t.Errorf("ID = %q", row.Data[ColID])
@@ -1076,7 +1076,7 @@ func TestSeriesToRow_EmptyNameFallback(t *testing.T) {
 		{ID: 100, Name: "[PATCH] Lorem ipsum", Date: d,
 			State: "new", Submitter: "Lorem"},
 	}
-	row := seriesToRow(s, patches, "", nil, nil, 0, nil, nil, nil, nil)
+	row := seriesToRow(s, patches, "", nil, nil, 0, nil, nil, nil, nil, nil)
 	if row.Data[ColName] != "Lorem ipsum" {
 		t.Errorf("Name = %q, want %q", row.Data[ColName], "Lorem ipsum")
 	}
@@ -1217,7 +1217,7 @@ func TestSeriesToRow_FetchedStatus(t *testing.T) {
 	}
 	for _, tt := range tests {
 		row := seriesToRow(tt.series, tt.patches, "",
-			nil, nil, 0, nil, nil, nil, tt.coverFetched)
+			nil, nil, 0, nil, nil, nil, tt.coverFetched, nil)
 		if row.Fetched != tt.wantFetched {
 			t.Errorf("%s: Fetched = %v, want %v",
 				tt.name, row.Fetched, tt.wantFetched)
@@ -1296,7 +1296,7 @@ func TestSeriesToRow_SubRowsSortedByPatchNumber(t *testing.T) {
 			Name: tt.name, Date: d, TotalPatches: len(tt.patches),
 		}
 		row := seriesToRow(s, tt.patches, tt.listPrefix,
-			nil, nil, 0, nil, nil, nil, nil)
+			nil, nil, 0, nil, nil, nil, nil, nil)
 		for i, want := range tt.want {
 			if i < len(row.SubRows) && row.SubRows[i][ColID] != want {
 				t.Errorf("%s: SubRow[%d] ID = %q, want %q",

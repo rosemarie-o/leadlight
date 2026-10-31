@@ -43,6 +43,45 @@ func ConfigGet(dir, key string, local bool) string {
 	return strings.TrimSpace(string(out))
 }
 
+// ConfigGetAll reads every value of a git config key for the given
+// working directory.  ConfigGet cannot be used for repeatable keys:
+// --get fails when a key has more than one value.  Returns nil when
+// the key is unset.
+func ConfigGetAll(dir, key string, local bool) []string {
+	args := []string{"config"}
+	if local {
+		args = append(args, "--local")
+	}
+	args = append(args, "--get-all", key)
+	cmd := exec.Command("git", args...)
+	cmd.Dir = dir
+	out, err := cmd.Output()
+	if err != nil {
+		return nil
+	}
+	// Only the trailing newline is stripped, not blank lines: an
+	// explicitly empty value is a misconfiguration the caller
+	// should be able to notice and report.
+	text := strings.TrimSuffix(string(out), "\n")
+	lines := strings.Split(text, "\n")
+	vals := make([]string, 0, len(lines))
+	for _, line := range lines {
+		vals = append(vals, strings.TrimSpace(line))
+	}
+	return vals
+}
+
+// UserEmail returns the configured git user.email, or empty string.
+func UserEmail(dir string) string {
+	cmd := exec.Command("git", "config", "user.email")
+	cmd.Dir = dir
+	out, err := cmd.Output()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(out))
+}
+
 // IsRepo checks if the current directory is inside a git repository.
 func IsRepo() bool {
 	return exec.Command("git", "rev-parse", "--git-dir").Run() == nil

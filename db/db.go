@@ -447,10 +447,14 @@ func (d *DB) UpdatePatchDetail(
 ) error {
 	d.writeMu.Lock()
 	defer d.writeMu.Unlock()
+	// stars_evaluated is reset because Cc and To only exist in the
+	// headers we just stored — an email star rule could not have
+	// been judged before now.
 	_, err := d.conn.Exec(`
 		UPDATE patches
 		SET content = ?, diff = ?, headers = ?,
-			prefixes = ?, detail_fetched = 1
+			prefixes = ?, detail_fetched = 1,
+			stars_evaluated = 0
 		WHERE id = ?`,
 		content, diff, headers, prefixes, patchID)
 	return err

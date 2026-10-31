@@ -17,10 +17,13 @@ const (
 	highlightAnimStep     = 0.1
 	spinnerInterval       = 100 // ~10 FPS, standard terminal spinner rate
 
-	subRowIndent   = " "
-	scrollBuffer   = 2 // rows kept visible below cursor when scrolling
-	reservedLines  = 4 // header + separator + status line + help bar
-	indicatorWidth = 2 // "▸ " selection indicator
+	subRowIndent  = " "
+	scrollBuffer  = 2 // rows kept visible below cursor when scrolling
+	reservedLines = 4 // header + separator + status line + help bar
+	// Gutter before the first data column, one cell per concern:
+	// selection marker, fetch state, star.
+	indicatorWidth = 3
+	starGlyph      = "★"
 )
 
 var spinnerFrames = []string{
@@ -63,6 +66,10 @@ var (
 	checksPendingStyle     lipgloss.Style // mbox view only
 	checksZeroStyle        lipgloss.Style
 	afrtStyle              lipgloss.Style
+	starStyle              lipgloss.Style
+	starDimStyle           lipgloss.Style
+	starColor              string
+	starDimColor           string
 	afrtColor              string
 	checkPassColor         string
 	checkFailColor         string
@@ -102,6 +109,8 @@ type cachedBgStyle struct {
 	suffix    lipgloss.Style // dimmed FG for right-aligned suffix columns
 	suffixFg  string         // hex color for suffix dim in gradient row
 	afrt      lipgloss.Style
+	star      lipgloss.Style
+	starDim   lipgloss.Style
 	checkPass lipgloss.Style
 	checkFail lipgloss.Style
 	checkWarn lipgloss.Style
@@ -148,6 +157,10 @@ func buildStyles(t *theme) {
 	checksPendingStyle = fg(t.ChecksPendingFg)
 	checksZeroStyle = fg(t.ChecksZeroFg)
 	afrtStyle = fg(t.AfrtFg).Bold(true)
+	starStyle = bold(t.StarFg)
+	starDimStyle = fg(t.StarDimFg)
+	starColor = t.StarFg
+	starDimColor = t.StarDimFg
 	afrtColor = t.AfrtFg
 	checkPassColor = t.ChecksPassFg
 	checkFailColor = t.ChecksFailFg
@@ -181,6 +194,8 @@ func buildStyles(t *theme) {
 	warnFg := checksWarnStyle.GetForeground()
 	zeroFg := checksZeroStyle.GetForeground()
 	aFg := afrtStyle.GetForeground()
+	sFg := starStyle.GetForeground()
+	sDimFg := starDimStyle.GetForeground()
 
 	for name, c := range t.BgColors {
 		makeCachedStyle := func(bg, fg rgb) *cachedBgStyle {
@@ -195,6 +210,8 @@ func buildStyles(t *theme) {
 				suffix:    b.Foreground(lipgloss.Color(dimFg.hex())),
 				suffixFg:  dimFg.hex(),
 				afrt:      b.Foreground(aFg).Bold(true),
+				star:      b.Foreground(sFg).Bold(true),
+				starDim:   b.Foreground(sDimFg),
 				checkPass: b.Foreground(passFg).Bold(true),
 				checkFail: b.Foreground(failFg).Bold(true),
 				checkWarn: b.Foreground(warnFg).Bold(true),

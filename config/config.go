@@ -4,10 +4,13 @@
 package config
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -92,6 +95,46 @@ type Config struct {
 	HistoryLimit     HistoryLimit
 	Signoff          *bool // nil = default (true), false = don't add -s to git am
 	FixGmailWrapping *bool // nil = default (true), false = disable quote rejoin
+
+	// Auto-star rules.  Each is a list of case-insensitive
+	// substrings; a patch matching any entry is starred.
+	StarEmails     []string // matched against the To and Cc headers
+	StarKeywords   []string // matched against the subject
+	StarSubmitters []string // matched against submitter name or email
+	AutoStar       *bool    // nil = default (true), false = no auto-starring
+}
+
+// StarRules reports whether any auto-star rule is configured and
+// enabled.
+func (c *Config) StarRules() bool {
+	if c.AutoStar != nil && !*c.AutoStar {
+		return false
+	}
+	return len(c.StarEmails) > 0 || len(c.StarKeywords) > 0 ||
+		len(c.StarSubmitters) > 0
+}
+
+// StarRulesHash is a stable fingerprint of the active rule set.  A
+// change means every rule-derived star has to be recomputed, so the
+// value is recorded in the database and compared on startup.
+func (c *Config) StarRulesHash() string {
+	if !c.StarRules() {
+		return "none"
+	}
+	parts := make([]string, 0,
+		len(c.StarEmails)+len(c.StarKeywords)+len(c.StarSubmitters))
+	for _, v := range c.StarEmails {
+		parts = append(parts, "e:"+strings.ToLower(v))
+	}
+	for _, v := range c.StarKeywords {
+		parts = append(parts, "k:"+strings.ToLower(v))
+	}
+	for _, v := range c.StarSubmitters {
+		parts = append(parts, "s:"+strings.ToLower(v))
+	}
+	sort.Strings(parts)
+	sum := sha256.Sum256([]byte(strings.Join(parts, "\n")))
+	return hex.EncodeToString(sum[:8])
 }
 
 func Load(dir string, local bool) (*Config, error) {
@@ -143,6 +186,25 @@ func Load(dir string, local bool) (*Config, error) {
 	if fixWrapStr == "false" {
 		f := false
 		cfg.FixGmailWrapping = &f
+	}
+
+	autoStarStr := gitops.ConfigGet(dir, "leadlight.autostar", local)
+	if autoStarStr == "false" {
+		f := false
+		cfg.AutoStar = &f
+	}
+
+	cfg.StarEmails = gitops.ConfigGetAll(dir, "leadlight.star-email", local)
+	cfg.StarKeywords = gitops.ConfigGetAll(dir, "leadlight.star-keyword", local)
+	cfg.StarSubmitters = gitops.ConfigGetAll(
+		dir, "leadlight.star-submitter", local)
+
+	// Being on Cc is the rule nearly everyone wants, so it needs no
+	// configuration: fall back to the address git already knows.
+	if len(cfg.StarEmails) == 0 {
+		if email := gitops.UserEmail(dir); email != "" {
+			cfg.StarEmails = []string{email}
+		}
 	}
 
 	if err := validate(cfg); err != nil {
@@ -216,5 +278,26 @@ func validate(cfg *Config) error {
 		return fmt.Errorf("API %s lacks comment events;"+
 			" set leadlight.mailarchive to enable comment tracking", cfg.APIVersion)
 	}
+	rules := map[string][]string{
+		"leadlight.star-email":     cfg.StarEmails,
+		"leadlight.star-keyword":   cfg.StarKeywords,
+		"leadlight.star-submitter": cfg.StarSubmitters,
+	}
+	for _, key := range sortedKeys(rules) {
+		for _, v := range rules[key] {
+			if strings.TrimSpace(v) == "" {
+				return fmt.Errorf("empty value in %s", key)
+			}
+		}
+	}
 	return nil
+}
+
+func sortedKeys(m map[string][]string) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
 }

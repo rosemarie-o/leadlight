@@ -617,3 +617,122 @@ func TestFixGmailWrapping_Disabled(t *testing.T) {
 		t.Error("should be false when explicitly disabled")
 	}
 }
+
+// gitAdd appends a value to a repeatable git config key.
+func gitAdd(t *testing.T, dir, key, value string) {
+	t.Helper()
+	cmd := exec.Command("git", "config", "--add", key, value)
+	cmd.Dir = dir
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git config --add %s: %v\n%s", key, err, out)
+	}
+}
+
+func starRepo(t *testing.T) string {
+	t.Helper()
+	return setupGitRepo(t, map[string]string{
+		"leadlight.server":  "https://ll.example.com/api/1.3",
+		"leadlight.project": "lorem-project",
+	})
+}
+
+func TestLoad_StarRulesRepeatable(t *testing.T) {
+	dir := starRepo(t)
+	gitAdd(t, dir, "leadlight.star-keyword", "netdev")
+	gitAdd(t, dir, "leadlight.star-keyword", "vhost")
+	gitAdd(t, dir, "leadlight.star-submitter", "Jane Doe")
+
+	cfg, err := Load(dir, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cfg.StarKeywords) != 2 ||
+		cfg.StarKeywords[0] != "netdev" ||
+		cfg.StarKeywords[1] != "vhost" {
+		t.Errorf("StarKeywords = %v, want both values", cfg.StarKeywords)
+	}
+	if len(cfg.StarSubmitters) != 1 ||
+		cfg.StarSubmitters[0] != "Jane Doe" {
+		t.Errorf("StarSubmitters = %v", cfg.StarSubmitters)
+	}
+	if !cfg.StarRules() {
+		t.Error("StarRules() = false with rules configured")
+	}
+}
+
+// Being on Cc is the rule nearly everyone wants, so it should work
+// without anyone configuring an address.
+func TestLoad_StarEmailDefaultsToUserEmail(t *testing.T) {
+	dir := starRepo(t)
+	cfg, err := Load(dir, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cfg.StarEmails) != 1 || cfg.StarEmails[0] != "test@test.com" {
+		t.Errorf("StarEmails = %v, want the git user.email", cfg.StarEmails)
+	}
+}
+
+func TestLoad_StarEmailOverridesUserEmail(t *testing.T) {
+	dir := starRepo(t)
+	gitAdd(t, dir, "leadlight.star-email", "me@example.com")
+	gitAdd(t, dir, "leadlight.star-email", "alias@example.com")
+
+	cfg, err := Load(dir, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cfg.StarEmails) != 2 || cfg.StarEmails[0] != "me@example.com" {
+		t.Errorf("StarEmails = %v", cfg.StarEmails)
+	}
+}
+
+func TestLoad_AutoStarDisabled(t *testing.T) {
+	dir := starRepo(t)
+	gitAdd(t, dir, "leadlight.star-keyword", "netdev")
+	gitAdd(t, dir, "leadlight.autostar", "false")
+
+	cfg, err := Load(dir, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.StarRules() {
+		t.Error("StarRules() = true with leadlight.autostar false")
+	}
+	if cfg.StarRulesHash() != "none" {
+		t.Errorf("StarRulesHash = %q, want none", cfg.StarRulesHash())
+	}
+}
+
+func TestLoad_RejectsEmptyStarRule(t *testing.T) {
+	dir := starRepo(t)
+	gitAdd(t, dir, "leadlight.star-keyword", "")
+
+	if _, err := Load(dir, true); err == nil {
+		t.Error("expected an error for an empty star rule")
+	}
+}
+
+func TestStarRulesHash(t *testing.T) {
+	a := &Config{StarKeywords: []string{"netdev", "vhost"}}
+	b := &Config{StarKeywords: []string{"vhost", "netdev"}}
+	if a.StarRulesHash() != b.StarRulesHash() {
+		t.Error("hash depends on the order the rules were listed")
+	}
+	// Case differences do not change which patches match, so they
+	// must not trigger a full re-evaluation either.
+	c := &Config{StarKeywords: []string{"NETDEV", "vhost"}}
+	if a.StarRulesHash() != c.StarRulesHash() {
+		t.Error("hash is case sensitive but matching is not")
+	}
+	d := &Config{StarKeywords: []string{"netdev"}}
+	if a.StarRulesHash() == d.StarRulesHash() {
+		t.Error("different rule sets share a hash")
+	}
+	// A keyword and a submitter rule of the same text are
+	// different rules.
+	e := &Config{StarSubmitters: []string{"netdev"}}
+	if d.StarRulesHash() == e.StarRulesHash() {
+		t.Error("rule kind is not part of the hash")
+	}
+}

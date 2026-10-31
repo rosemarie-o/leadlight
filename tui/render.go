@@ -285,6 +285,56 @@ func (m *Model) maxVisibleRows() int {
 	return rows
 }
 
+// rowGutter builds the unstyled marker column that precedes the
+// first data column, one cell per concern: selection, fetch state,
+// star.  Always indicatorWidth cells wide so the columns behind it
+// do not shift as markers come and go.
+func (m *Model) rowGutter(
+	item visibleItem, selected, fetching bool,
+) string {
+	sel := " "
+	if selected {
+		sel = "▸"
+	}
+	state := " "
+	if fetching {
+		state = spinnerFrames[m.spinnerFrame]
+	} else if !item.fetched {
+		state = "·"
+	}
+	star := " "
+	if item.starred {
+		star = starGlyph
+	}
+	return sel + state + star
+}
+
+// renderGutterPrefix styles a gutter built by rowGutter.  The star
+// keeps its own color rather than the row's, so it reads as a mark
+// on the row instead of part of it.  A series shows a dimmer star
+// than a patch, since its star is only inherited from a patch
+// inside it.
+func renderGutterPrefix(
+	prefix string, item visibleItem, rowStyle lipgloss.Style,
+) string {
+	r := []rune(prefix)
+	if !item.starred || len(r) != indicatorWidth {
+		return rowStyle.Render(prefix)
+	}
+	style := starStyle
+	if !item.isSubRow {
+		style = starDimStyle
+	}
+	if cached := bgStyles[item.style.Background]; cached != nil {
+		style = cached.star
+		if !item.isSubRow {
+			style = cached.starDim
+		}
+	}
+	return rowStyle.Render(string(r[:indicatorWidth-1])) +
+		style.Render(string(r[indicatorWidth-1]))
+}
+
 func (m *Model) renderRows(
 	out *strings.Builder,
 	items []visibleItem,
@@ -292,9 +342,6 @@ func (m *Model) renderRows(
 ) {
 	rendered := 0
 	maxRows := m.maxVisibleRows()
-
-	indicator := "▸ "
-	blank := strings.Repeat(" ", indicatorWidth)
 
 	checksStart := indicatorWidth
 	for c := 0; c < int(m.ChecksColIdx) && c < len(widths); c++ {
@@ -345,15 +392,12 @@ func (m *Model) renderRows(
 		fetching := m.isRowFetching(items[i])
 		var row string
 		if i == m.selectedRow {
-			ind := indicator
-			if fetching {
-				ind = "▸" + spinnerFrames[m.spinnerFrame]
-			} else if !items[i].fetched {
-				ind = "▸·"
-			}
+			ind := m.rowGutter(items[i], true, fetching)
 			if m.selectorMode != selectorNone {
-				row = ind + m.buildRow(
-					items[i], widths, m.selectorHighlightCol)
+				row = renderGutterPrefix(
+					ind, items[i], lipgloss.NewStyle()) +
+					m.buildRow(
+						items[i], widths, m.selectorHighlightCol)
 			} else {
 				selItem := items[i]
 				if m.isCompareMarked(selItem) {
@@ -366,17 +410,21 @@ func (m *Model) renderRows(
 					commentStart, commentWidth,
 					nameStart, nameWidth)
 			}
-		} else if fetching {
-			prefix := " " + spinnerFrames[m.spinnerFrame]
-			row = m.buildStyledRow(items[i], widths, prefix, false)
-		} else if !items[i].fetched {
-			row = m.buildStyledRow(items[i], widths, " ·", true)
-		} else if m.isCompareMarked(items[i]) {
-			marked := items[i]
-			marked.style.Background = "compare"
-			row = m.buildStyledRow(marked, widths, blank, false)
 		} else {
-			row = m.buildStyledRow(items[i], widths, blank, true)
+			prefix := m.rowGutter(items[i], false, fetching)
+			// Rows in motion must not be cached: the spinner
+			// changes every frame, and a compare mark is
+			// transient styling the cache cannot see.
+			switch {
+			case fetching:
+				row = m.buildStyledRow(items[i], widths, prefix, false)
+			case m.isCompareMarked(items[i]):
+				marked := items[i]
+				marked.style.Background = "compare"
+				row = m.buildStyledRow(marked, widths, prefix, false)
+			default:
+				row = m.buildStyledRow(items[i], widths, prefix, true)
+			}
 		}
 
 		out.WriteString(row)
@@ -485,7 +533,7 @@ func (m *Model) buildStyledRow(
 	rowStyle := item.style.lipgloss()
 	var b strings.Builder
 	b.Grow(m.width * 4)
-	b.WriteString(rowStyle.Render(prefix))
+	b.WriteString(renderGutterPrefix(prefix, item, rowStyle))
 	for j, cellData := range item.data {
 		if widths[j] == 0 {
 			continue
@@ -576,11 +624,18 @@ func (m *Model) renderSelectedRow(
 		sfxStart = nameStart + nameWidth - sfxLen
 		sfxEnd = nameStart + nameWidth
 	}
+	starFg := ""
+	if item.starred {
+		starFg = starColor
+		if !item.isSubRow {
+			starFg = starDimColor
+		}
+	}
 	return m.renderGradientRow(
 		fullRaw, bgName, checksStart, checksWidth, checksText,
 		afrtStart, afrtWidth, afrtText,
 		commentStart, commentWidth, commentText,
-		sfxStart, sfxEnd)
+		sfxStart, sfxEnd, starFg)
 }
 
 func (m *Model) renderGradientRow(
@@ -589,6 +644,7 @@ func (m *Model) renderGradientRow(
 	afrtStart, afrtWidth int, afrtText string,
 	commentStart, commentWidth int, commentText string,
 	suffixStart, suffixEnd int,
+	starFg string,
 ) string {
 	runes := []rune(rawRow)
 	// Use display width (not rune count) for column calculations
@@ -684,6 +740,14 @@ func (m *Model) renderGradientRow(
 				fg = commentColors[ci]
 				bold = commentColors[ci] != checkZeroColor
 			}
+		}
+
+		// The star keeps its own color through the highlight
+		// sweep, so moving onto a row does not wash out the
+		// mark the user put there.
+		if starFg != "" && col == indicatorWidth-1 {
+			fg = starFg
+			bold = true
 		}
 
 		style := lipgloss.NewStyle().
@@ -1084,6 +1148,11 @@ func (m *Model) renderHelpBar(out *strings.Builder) {
 			bright.Render("active") +
 			sep.Render("] "))
 	}
+	if m.starredOnly {
+		b.WriteString(sep.Render("[") +
+			starStyle.Render(starGlyph) +
+			sep.Render("] "))
+	}
 
 	if m.filterText != "" {
 		b.WriteString(helpKey(bright, desc, "q", "clear"))
@@ -1111,6 +1180,12 @@ func (m *Model) renderHelpBar(out *strings.Builder) {
 	b.WriteString(helpKey(bright, desc, "v", "versions"))
 	b.WriteString(helpSepStr(sep))
 	b.WriteString(helpKey(bright, desc, "c", "compare"))
+	b.WriteString(helpSepStr(sep))
+	b.WriteString(helpKey(bright, desc, "*", "star"))
+	b.WriteString(helpSepStr(sep))
+	// Constant label: the [★] badge above already shows whether
+	// the filter is on, and "all" would collide with the a key.
+	b.WriteString(helpKey(bright, desc, "!", "starred"))
 	b.WriteString(helpSepStr(sep))
 	if m.showAll {
 		b.WriteString(helpKey(bright, desc, "a", "active"))

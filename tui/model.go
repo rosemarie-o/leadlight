@@ -57,8 +57,12 @@ type RowData struct {
 	SubRows       [][]string
 	SubRowStyles  []RowStyle
 	SubRowFetched []bool
+	SubRowStarred []bool
 	Expanded      bool
 	Fetched       bool
+	// Starred is inherited: a series is marked when any of its
+	// patches is, so a star stays visible while collapsed.
+	Starred bool
 }
 
 type visibleItem struct {
@@ -69,6 +73,7 @@ type visibleItem struct {
 	subRowIdx int
 	canExpand bool
 	fetched   bool
+	starred   bool
 }
 
 func (m *Model) isRowFetching(item visibleItem) bool {
@@ -207,6 +212,7 @@ type Model struct {
 	showAllBeforeFilter bool
 	filterEditing       bool
 	filterText          string
+	starredOnly         bool
 	cachedRenderedRows  map[int]*seriesRowCache
 
 	cachedVisibleItems      []visibleItem
@@ -332,6 +338,7 @@ func (m *Model) reloadData() {
 	allCommentNames := m.db.GetCommentSubmittersBatch(m.showAll, m.states)
 	allPatchCommentNames := m.db.GetPatchCommentSubmittersBatch(m.showAll, m.states)
 	coverFetchStatus := m.db.GetCoverFetchStatus(m.showAll, m.states)
+	allStars := m.db.GetStarsBatch(m.showAll, m.states)
 
 	rows := make([]RowData, 0, len(seriesList))
 	for _, s := range seriesList {
@@ -342,7 +349,8 @@ func (m *Model) reloadData() {
 		row := seriesToRow(
 			s, allPatches[s.ID], m.listPrefix, m.delegateNames,
 			allTags[s.ID], allComments[s.ID], allPatchComments,
-			allCommentNames[s.ID], allPatchCommentNames, cf)
+			allCommentNames[s.ID], allPatchCommentNames, cf,
+			allStars[s.ID])
 		sid := strconv.Itoa(s.ID)
 		if expanded[sid] {
 			row.Expanded = true
@@ -809,18 +817,34 @@ func (m *Model) getVisibleItems() []visibleItem {
 	var items []visibleItem
 
 	for i, rd := range m.RowData {
+		// The starred filter keeps a series only for the sake of
+		// its starred patches, so an unstarred series row is
+		// never a match on its own.
+		if m.starredOnly && !rd.Starred {
+			continue
+		}
 		seriesMatch := filter == "" || matchesFilter(rd.Data, filter)
+		if m.starredOnly {
+			seriesMatch = false
+		}
 
 		var matchingSubs []int
-		if filter != "" {
+		if filter != "" || m.starredOnly {
 			for si, sub := range rd.SubRows {
-				if matchesFilter(sub, filter) {
-					matchingSubs = append(matchingSubs, si)
+				if m.starredOnly &&
+					(si >= len(rd.SubRowStarred) ||
+						!rd.SubRowStarred[si]) {
+					continue
 				}
+				if filter != "" && !matchesFilter(sub, filter) {
+					continue
+				}
+				matchingSubs = append(matchingSubs, si)
 			}
 		}
 
-		if filter != "" && !seriesMatch && len(matchingSubs) == 0 {
+		if (filter != "" || m.starredOnly) &&
+			!seriesMatch && len(matchingSubs) == 0 {
 			continue
 		}
 
@@ -832,15 +856,19 @@ func (m *Model) getVisibleItems() []visibleItem {
 			subRowIdx: -1,
 			canExpand: len(rd.SubRows) > 0,
 			fetched:   rd.Fetched,
+			starred:   rd.Starred,
 		})
 
-		// Auto-expand series with matching sub-rows during filtering
-		showSubs := rd.Expanded ||
-			(m.filterEditing && len(matchingSubs) > 0 &&
-				!singlePatchSameName(rd))
+		// Auto-expand series with matching sub-rows during
+		// filtering.  The starred filter always expands, since
+		// its series rows are only shown for their patches'
+		// sake and there is no commit step to persist Expanded.
+		autoExpand := (m.filterEditing || m.starredOnly) &&
+			len(matchingSubs) > 0 && !singlePatchSameName(rd)
+		showSubs := rd.Expanded || autoExpand
 		if showSubs {
 			for si, sub := range rd.SubRows {
-				if filter != "" && !seriesMatch {
+				if (filter != "" || m.starredOnly) && !seriesMatch {
 					match := false
 					for _, mi := range matchingSubs {
 						if mi == si {
@@ -857,6 +885,8 @@ func (m *Model) getVisibleItems() []visibleItem {
 					subStyle = rd.SubRowStyles[si]
 				}
 				subFetched := si < len(rd.SubRowFetched) && rd.SubRowFetched[si]
+				subStarred := si < len(rd.SubRowStarred) &&
+					rd.SubRowStarred[si]
 				items = append(items, visibleItem{
 					data:      sub,
 					style:     subStyle,
@@ -864,6 +894,7 @@ func (m *Model) getVisibleItems() []visibleItem {
 					parentIdx: i,
 					subRowIdx: si,
 					fetched:   subFetched,
+					starred:   subStarred,
 				})
 			}
 		}
